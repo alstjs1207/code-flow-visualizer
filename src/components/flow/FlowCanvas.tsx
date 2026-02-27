@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ReactFlow,
   ReactFlowProvider,
@@ -8,24 +8,42 @@ import {
   Controls,
   MiniMap,
   type Node,
-  type Edge,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import { nodeTypes } from "./nodes";
 import { useFlowStore } from "@/stores/flow-store";
 import { NodeTooltip } from "./NodeTooltip";
-
-interface PinnedTooltip {
-  nodeId: string;
-  pos: { x: number; y: number };
-}
+import { PathFilterBar } from "./PathFilterBar";
+import {
+  findPathNodes,
+  getEntryNodeId,
+  getTerminalNodeIds,
+} from "@/lib/graph/path-finder";
 
 function FlowCanvasInner() {
-  const { rfNodes, rfEdges, setHoveredNodeId, hoveredNodeId } = useFlowStore();
+  const {
+    rfNodes,
+    rfEdges,
+    flowGraph,
+    setHoveredNodeId,
+    hoveredNodeId,
+    pathFilter,
+    focusedTerminalId,
+    setFocusedTerminalId,
+    highlightedNodeIds,
+    highlightedEdgeIds,
+    setHighlighted,
+    selectedNodeId,
+    setSelectedNodeId,
+    setPathFilter,
+  } = useFlowStore();
+
   const containerRef = useRef<HTMLDivElement>(null);
   const leaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const [tooltipPos, setTooltipPos] = useState<{ x: number; y: number } | null>(null);
-  const [pinned, setPinned] = useState<PinnedTooltip | null>(null);
+  const [tooltipPos, setTooltipPos] = useState<{
+    x: number;
+    y: number;
+  } | null>(null);
 
   const clearLeaveTimer = useCallback(() => {
     if (leaveTimer.current) {
@@ -40,15 +58,87 @@ function FlowCanvasInner() {
     return { x: event.clientX - rect.left, y: event.clientY - rect.top };
   };
 
+  // Recompute highlighted path when filter or focused terminal changes
+  useEffect(() => {
+    if (!flowGraph) {
+      setHighlighted(new Set(), new Set());
+      return;
+    }
+
+    const entryId = getEntryNodeId(flowGraph);
+    if (!entryId) {
+      setHighlighted(new Set(), new Set());
+      return;
+    }
+
+    // Focused terminal takes priority over filter
+    if (focusedTerminalId) {
+      const result = findPathNodes(flowGraph, entryId, [focusedTerminalId]);
+      setHighlighted(result.nodeIds, result.edgeIds);
+      return;
+    }
+
+    if (pathFilter === "all") {
+      setHighlighted(new Set(), new Set());
+      return;
+    }
+
+    const targetType = pathFilter === "success" ? "return" : "error";
+    const targets = getTerminalNodeIds(flowGraph, targetType);
+    if (targets.length === 0) {
+      setHighlighted(new Set(), new Set());
+      return;
+    }
+
+    const result = findPathNodes(flowGraph, entryId, targets);
+    setHighlighted(result.nodeIds, result.edgeIds);
+  }, [flowGraph, pathFilter, focusedTerminalId, setHighlighted]);
+
+  // Dimmed nodes
+  const displayNodes = useMemo(
+    () =>
+      rfNodes.map((n) => ({
+        ...n,
+        data: {
+          ...n.data,
+          isFocused: focusedTerminalId === n.id,
+        },
+        style: {
+          ...n.style,
+          opacity:
+            highlightedNodeIds.size === 0 || highlightedNodeIds.has(n.id)
+              ? 1
+              : 0.15,
+          transition: "opacity 0.3s ease",
+        },
+      })),
+    [rfNodes, highlightedNodeIds, focusedTerminalId]
+  );
+
+  // Dimmed edges
+  const displayEdges = useMemo(
+    () =>
+      rfEdges.map((e) => ({
+        ...e,
+        style: {
+          ...e.style,
+          opacity:
+            highlightedEdgeIds.size === 0 || highlightedEdgeIds.has(e.id)
+              ? 1
+              : 0.15,
+          transition: "opacity 0.3s ease",
+        },
+      })),
+    [rfEdges, highlightedEdgeIds]
+  );
+
   const onNodeMouseEnter = (event: React.MouseEvent, node: Node) => {
-    if (pinned) return;
     clearLeaveTimer();
     setHoveredNodeId(node.id);
     setTooltipPos(getRelativePos(event));
   };
 
   const onNodeMouseLeave = () => {
-    if (pinned) return;
     clearLeaveTimer();
     leaveTimer.current = setTimeout(() => {
       setHoveredNodeId(null);
@@ -56,33 +146,39 @@ function FlowCanvasInner() {
     }, 300);
   };
 
-  const onNodeClick = (event: React.MouseEvent, node: Node) => {
-    const pos = getRelativePos(event);
-    if (pos) {
-      clearLeaveTimer();
-      setPinned({ nodeId: node.id, pos });
-      setHoveredNodeId(node.id);
-      setTooltipPos(pos);
+  const onNodeClick = (_event: React.MouseEvent, node: Node) => {
+    // Code panel: select node
+    setSelectedNodeId(node.id);
+
+    // Terminal node focus toggle
+    const nodeType = node.data?.nodeType || node.type;
+    if (nodeType === "return" || nodeType === "error") {
+      if (focusedTerminalId === node.id) {
+        setFocusedTerminalId(null);
+      } else {
+        setFocusedTerminalId(node.id);
+      }
     }
   };
 
   const onPaneClick = () => {
-    setPinned(null);
     setHoveredNodeId(null);
     setTooltipPos(null);
+    setSelectedNodeId(null);
+    setFocusedTerminalId(null);
+    setPathFilter("all");
   };
 
-  const displayNodeId = pinned ? pinned.nodeId : hoveredNodeId;
-  const displayPos = pinned ? pinned.pos : tooltipPos;
-  const displayNode = displayNodeId
-    ? rfNodes.find((n) => n.id === displayNodeId)
+  const displayNode = hoveredNodeId
+    ? rfNodes.find((n) => n.id === hoveredNodeId)
     : null;
 
   return (
     <div ref={containerRef} className="relative h-full w-full">
+      <PathFilterBar />
       <ReactFlow
-        nodes={rfNodes}
-        edges={rfEdges}
+        nodes={displayNodes}
+        edges={displayEdges}
         nodeTypes={nodeTypes}
         onNodeMouseEnter={onNodeMouseEnter}
         onNodeMouseLeave={onNodeMouseLeave}
@@ -96,9 +192,7 @@ function FlowCanvasInner() {
         className="bg-gray-950"
       >
         <Background color="#1e293b" gap={20} size={1} />
-        <Controls
-          className="!bg-gray-800 !border-gray-700 !rounded-lg [&>button]:!bg-gray-800 [&>button]:!border-gray-700 [&>button]:!text-gray-300 [&>button:hover]:!bg-gray-700"
-        />
+        <Controls className="!bg-gray-800 !border-gray-700 !rounded-lg [&>button]:!bg-gray-800 [&>button]:!border-gray-700 [&>button]:!text-gray-300 [&>button:hover]:!bg-gray-700" />
         <MiniMap
           nodeColor={(node) => {
             const layer = node.data?.layer as string;
@@ -117,13 +211,8 @@ function FlowCanvasInner() {
           maskColor="rgba(0, 0, 0, 0.6)"
         />
       </ReactFlow>
-      {displayNode && displayPos && (
-        <NodeTooltip
-          node={displayNode}
-          position={displayPos}
-          pinned={!!pinned}
-          onClose={pinned ? onPaneClick : undefined}
-        />
+      {displayNode && tooltipPos && (
+        <NodeTooltip node={displayNode} position={tooltipPos} />
       )}
     </div>
   );

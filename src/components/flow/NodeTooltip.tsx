@@ -6,14 +6,12 @@ import type { Node } from "@xyflow/react";
 interface NodeTooltipProps {
   node: Node;
   position: { x: number; y: number };
-  pinned?: boolean;
-  onClose?: () => void;
 }
 
 const OFFSET_X = 12;
 const OFFSET_Y = -8;
 
-export function NodeTooltip({ node, position, pinned, onClose }: NodeTooltipProps) {
+export function NodeTooltip({ node, position }: NodeTooltipProps) {
   const { rawCode, source, layer, nodeType } = node.data as Record<string, unknown>;
   const ref = useRef<HTMLDivElement>(null);
   const [adjusted, setAdjusted] = useState<{ left: number; top: number }>({
@@ -36,17 +34,14 @@ export function NodeTooltip({ node, position, pinned, onClose }: NodeTooltipProp
     let left = position.x + OFFSET_X;
     let top = position.y + OFFSET_Y;
 
-    // flip horizontally if overflowing right
     if (left + elW > parentW) {
       left = position.x - OFFSET_X - elW;
     }
 
-    // flip vertically if overflowing bottom
     if (top + elH > parentH) {
       top = position.y - OFFSET_Y - elH;
     }
 
-    // clamp to edges
     if (left < 0) left = 4;
     if (top < 0) top = 4;
 
@@ -56,11 +51,7 @@ export function NodeTooltip({ node, position, pinned, onClose }: NodeTooltipProp
   return (
     <div
       ref={ref}
-      className={`absolute z-50 min-w-[24rem] max-w-2xl rounded-lg border bg-gray-900 p-4 shadow-xl ${
-        pinned
-          ? "border-cyan-700/60"
-          : "border-gray-700 pointer-events-none"
-      }`}
+      className="pointer-events-none absolute z-50 min-w-[24rem] max-w-2xl rounded-lg border border-gray-700 bg-gray-900 p-4 shadow-xl"
       style={{ left: adjusted.left, top: adjusted.top }}
     >
       <div className="mb-3 flex items-center gap-2">
@@ -76,14 +67,6 @@ export function NodeTooltip({ node, position, pinned, onClose }: NodeTooltipProp
             {(source as { file: string; line: number }).line}
           </span>
         ) : null}
-        {pinned && onClose && (
-          <button
-            onClick={onClose}
-            className="ml-auto text-gray-500 hover:text-gray-300 text-sm leading-none"
-          >
-            ✕
-          </button>
-        )}
       </div>
       {rawCode ? (
         <pre className="max-h-72 overflow-auto rounded bg-gray-950 p-3 text-sm leading-relaxed text-gray-300">

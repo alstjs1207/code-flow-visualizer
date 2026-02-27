@@ -10,6 +10,7 @@ const LAYER_COLORS: Record<string, string> = {
 
 export function ErrorNode({ data }: NodeProps) {
   const layerColor = LAYER_COLORS[data.layer as string] || "#f87171";
+  const isFocused = data.isFocused as boolean;
 
   return (
     <div
@@ -18,6 +19,9 @@ export function ErrorNode({ data }: NodeProps) {
         background: "#2a1215",
         borderColor: "#f87171",
         color: "#f87171",
+        boxShadow: isFocused
+          ? "0 0 0 3px rgba(248, 113, 113, 0.3), 0 0 12px rgba(248, 113, 113, 0.2)"
+          : undefined,
       }}
     >
       <Handle type="target" position={Position.Top} className="!bg-red-400" />

@@ -3,17 +3,12 @@
 import { useFlowStore } from "@/stores/flow-store";
 
 export function CodePanel() {
-  const { selectedNodeId, rfNodes, setSelectedNodeId } = useFlowStore();
+  const { selectedNodeId, flowGraph, setSelectedNodeId } = useFlowStore();
 
-  if (!selectedNodeId) return null;
+  if (!selectedNodeId || !flowGraph) return null;
 
-  const node = rfNodes.find((n) => n.id === selectedNodeId);
+  const node = flowGraph.nodes.find((n) => n.id === selectedNodeId);
   if (!node) return null;
-
-  const { rawCode, source, layer, nodeType, label } = node.data as Record<
-    string,
-    unknown
-  >;
 
   return (
     <div className="flex w-80 shrink-0 flex-col border-l border-gray-800 bg-gray-950">
@@ -31,29 +26,28 @@ export function CodePanel() {
       {/* Node info */}
       <div className="border-b border-gray-800 px-4 py-3">
         <p className="mb-2 truncate text-sm font-medium text-gray-200">
-          {label as string}
+          {node.label}
         </p>
         <div className="flex flex-wrap items-center gap-2">
           <span className="rounded bg-gray-800 px-2 py-0.5 text-xs text-gray-400">
-            {layer as string}
+            {node.layer}
           </span>
           <span className="rounded bg-gray-800 px-2 py-0.5 text-xs text-gray-400">
-            {(nodeType as string) || (node.type as string)}
+            {node.type}
           </span>
         </div>
-        {source ? (
+        {node.source ? (
           <p className="mt-2 text-xs text-gray-500">
-            {(source as { file: string; line: number }).file}:
-            {(source as { file: string; line: number }).line}
+            {node.source.file}:{node.source.line}
           </p>
         ) : null}
       </div>
 
       {/* Code block */}
-      {rawCode ? (
+      {node.rawCode ? (
         <div className="flex-1 overflow-auto p-4">
           <pre className="rounded bg-gray-900 p-3 text-sm leading-relaxed text-gray-300">
-            <code>{rawCode as string}</code>
+            <code>{node.rawCode}</code>
           </pre>
         </div>
       ) : (

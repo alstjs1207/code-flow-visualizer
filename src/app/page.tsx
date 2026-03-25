@@ -2,7 +2,7 @@
 
 import { TopBar } from "@/components/layout/TopBar";
 import { Sidebar } from "@/components/layout/Sidebar";
-import { FlowCanvas } from "@/components/flow/FlowCanvas";
+import { MermaidCanvas } from "@/components/flow/MermaidCanvas";
 import { FlowStats } from "@/components/flow/FlowStats";
 
 export default function Home() {
@@ -13,7 +13,7 @@ export default function Home() {
         <Sidebar />
         <main className="flex flex-1 flex-col">
           <div className="flex-1">
-            <FlowCanvas />
+            <MermaidCanvas />
           </div>
           <FlowStats />
         </main>

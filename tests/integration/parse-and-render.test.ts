@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { CodeFlowParser } from "@/lib/parser";
-import { applyDagreLayout } from "@/lib/layout/dagre-layout";
+import { flowGraphToMermaid } from "@/lib/mermaid/flowgraph-to-mermaid";
 import { readFileSync } from "fs";
 import { join } from "path";
 
@@ -11,7 +11,7 @@ function readFixture(name: string): string {
 }
 
 describe("parse-and-render integration", () => {
-  it("full pipeline: fixture → FlowGraph → layout", () => {
+  it("full pipeline: fixture → FlowGraph → Mermaid syntax", () => {
     const handlerCode = readFixture("simple-handler.ts");
     const serviceCode = readFixture("nested-conditions.ts");
 
@@ -52,18 +52,26 @@ describe("parse-and-render integration", () => {
     expect(trueEdges.length).toBeGreaterThanOrEqual(3);
     expect(falseEdges.length).toBeGreaterThanOrEqual(3);
 
-    // Step 3: Apply layout
-    const { nodes, edges } = applyDagreLayout(graph);
-    expect(nodes.length).toBe(graph.nodes.length);
-    expect(edges.length).toBe(graph.edges.length);
+    // Step 3: Convert to Mermaid syntax
+    const result = flowGraphToMermaid(graph);
+    expect(result.definition).toContain("flowchart TD");
+    expect(result.nodeIds.length).toBe(graph.nodes.length);
+    expect(result.edgeMetas.length).toBe(graph.edges.length);
 
-    // All nodes should have positions
-    for (const node of nodes) {
-      expect(node.position.x).toBeDefined();
-      expect(node.position.y).toBeDefined();
-      expect(typeof node.position.x).toBe("number");
-      expect(typeof node.position.y).toBe("number");
+    // Verify all node IDs are present in definition
+    for (const nodeId of result.nodeIds) {
+      expect(result.definition).toContain(nodeId);
     }
+
+    // Verify classDef styles
+    expect(result.definition).toContain("classDef handler");
+    expect(result.definition).toContain("classDef service");
+    expect(result.definition).toContain("classDef dao");
+    expect(result.definition).toContain("classDef errorNode");
+    expect(result.definition).toContain("classDef returnNode");
+
+    // Verify linkStyle for edges
+    expect(result.definition).toContain("linkStyle");
   });
 
   it("handles handler-only code (no service)", () => {
@@ -80,12 +88,13 @@ describe("parse-and-render integration", () => {
       const graph = parser.buildFlowGraph(handler);
       expect(graph.nodes.length).toBeGreaterThan(0);
 
-      const { nodes } = applyDagreLayout(graph);
-      expect(nodes.length).toBe(graph.nodes.length);
+      const result = flowGraphToMermaid(graph);
+      expect(result.definition).toContain("flowchart TD");
+      expect(result.nodeIds.length).toBe(graph.nodes.length);
     }
   });
 
-  it("full pipeline: Fastify route handler → FlowGraph → layout", () => {
+  it("full pipeline: Fastify route handler → FlowGraph → Mermaid", () => {
     const handlerCode = readFixture("fastify-class-handler.ts");
 
     const parser = new CodeFlowParser(
@@ -111,14 +120,10 @@ describe("parse-and-render integration", () => {
     const layers = new Set(graph.nodes.map((n) => n.layer));
     expect(layers.has("handler")).toBe(true);
 
-    // Step 3: Apply layout
-    const { nodes, edges } = applyDagreLayout(graph);
-    expect(nodes.length).toBe(graph.nodes.length);
-
-    for (const node of nodes) {
-      expect(typeof node.position.x).toBe("number");
-      expect(typeof node.position.y).toBe("number");
-    }
+    // Step 3: Convert to Mermaid syntax
+    const result = flowGraphToMermaid(graph);
+    expect(result.definition).toContain("flowchart TD");
+    expect(result.nodeIds.length).toBe(graph.nodes.length);
   });
 
   it("Fastify class with service type resolution → deep tracing", () => {
@@ -156,18 +161,16 @@ class AccountService {
     const graph = parser.buildFlowGraph(getHandler);
     expect(graph.nodes.length).toBeGreaterThan(1);
 
-    // Verify DAO layer nodes exist (deep tracing + return-DAO matching succeeded)
-    // Note: when a service method is a simple DAO call wrapper (return this.repo.find()),
-    // all service nodes get replaced by DAO nodes, so service layer may be absent
+    // Verify DAO layer nodes exist
     const layers = new Set(graph.nodes.map((n) => n.layer));
     expect(layers.has("dao")).toBe(true);
     const daoNodes = graph.nodes.filter((n) => n.layer === "dao");
     expect(daoNodes.length).toBeGreaterThanOrEqual(1);
     expect(daoNodes[0].label).toContain("repository.findById");
 
-    // Step 3: Layout
-    const { nodes } = applyDagreLayout(graph);
-    expect(nodes.length).toBe(graph.nodes.length);
+    // Step 3: Mermaid syntax
+    const result = flowGraphToMermaid(graph);
+    expect(result.nodeIds.length).toBe(graph.nodes.length);
   });
 
   it("skillflo pattern: bindRoute + service→service + switch", () => {
@@ -232,21 +235,16 @@ class MemberService {
     const postGraph = parser.buildFlowGraph(postHandler);
     const postDaoNodes = postGraph.nodes.filter((n) => n.layer === "dao");
     const postDaoLabels = postDaoNodes.map((n) => n.label);
-    // auditService should NOT appear as DAO
     expect(postDaoLabels.some((l) => l.includes("auditService"))).toBe(false);
-    // memberDao should appear as DAO
     expect(postDaoLabels.some((l) => l.includes("memberDao"))).toBe(true);
 
-    // Step 4: Layout
-    const { nodes } = applyDagreLayout(graph);
-    expect(nodes.length).toBe(graph.nodes.length);
-    for (const node of nodes) {
-      expect(typeof node.position.x).toBe("number");
-      expect(typeof node.position.y).toBe("number");
-    }
+    // Step 4: Mermaid syntax
+    const result = flowGraphToMermaid(graph);
+    expect(result.nodeIds.length).toBe(graph.nodes.length);
+    expect(result.edgeMetas.length).toBe(graph.edges.length);
   });
 
-  it("full pipeline: standalone handler + service → FlowGraph → layout", () => {
+  it("full pipeline: standalone handler + service → FlowGraph → Mermaid", () => {
     const handlerCode = readFixture("standalone-handler.ts");
     const serviceCode = readFixture("nested-conditions.ts");
 
@@ -275,14 +273,10 @@ class MemberService {
     const layers = new Set(graph.nodes.map((n) => n.layer));
     expect(layers.has("handler")).toBe(true);
 
-    // Step 3: Apply layout
-    const { nodes, edges } = applyDagreLayout(graph);
-    expect(nodes.length).toBe(graph.nodes.length);
-    expect(edges.length).toBe(graph.edges.length);
-
-    for (const node of nodes) {
-      expect(typeof node.position.x).toBe("number");
-      expect(typeof node.position.y).toBe("number");
-    }
+    // Step 3: Convert to Mermaid syntax
+    const result = flowGraphToMermaid(graph);
+    expect(result.definition).toContain("flowchart TD");
+    expect(result.nodeIds.length).toBe(graph.nodes.length);
+    expect(result.edgeMetas.length).toBe(graph.edges.length);
   });
 });

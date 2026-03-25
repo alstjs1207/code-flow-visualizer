@@ -2,7 +2,7 @@
 
 import { TopBar } from "@/components/layout/TopBar";
 import { GitHubSidebar } from "@/components/layout/GitHubSidebar";
-import { FlowCanvas } from "@/components/flow/FlowCanvas";
+import { MermaidCanvas } from "@/components/flow/MermaidCanvas";
 import { FlowStats } from "@/components/flow/FlowStats";
 import { CodePanel } from "@/components/flow/CodePanel";
 
@@ -20,7 +20,7 @@ export function RepoVisualizerPage({ owner, repo }: RepoVisualizerPageProps) {
         <main className="flex flex-1 overflow-hidden">
           <div className="flex flex-1 flex-col">
             <div className="flex-1">
-              <FlowCanvas />
+              <MermaidCanvas />
             </div>
             <FlowStats />
           </div>

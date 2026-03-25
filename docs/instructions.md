@@ -769,10 +769,12 @@ export class OrderDao extends BaseCrudDao<OrderExtras> {
 > 핵심: 초기 스캔은 handler 목록만 빠르게 반환하고, handler 선택 시 필요한 service/DAO만 on-demand로 가져와 flow 생성
 
 **문제점 (Phase 2 완료 시점):**
+
 - Scan 엔드포인트가 handler + service + DAO 파일을 한꺼번에 fetch + parse → 대형 repo에서 느림
 - handler 목록만 필요한 시점에 service/DAO까지 모두 로드 (불필요한 선행 작업)
 
 **해결:**
+
 - **1단계 (경량 스캔)**: handler 파일만 fetch → handler 목록 빠르게 반환
 - **2단계 (온디맨드 딥 스캔)**: handler 선택 시 연결된 service/DAO만 fetch → flow 생성
 
@@ -800,19 +802,21 @@ export class OrderDao extends BaseCrudDao<OrderExtras> {
 
 #### API 동작 변경
 
-| 엔드포인트 | Phase 2 (현재) | Phase 2.5 |
-|---|---|---|
-| `GET /api/repos/:owner/:repo/scan` | handler + service + DAO 모두 fetch → 전체 파싱 → handler 목록 | handler 파일만 fetch → 경량 파싱 → handler 목록 |
-| `GET /api/repos/:owner/:repo/handlers/:id/flow` | 캐시된 parser에서 buildFlowGraph() | service/DAO 파일 on-demand fetch → 파싱 → buildFlowGraph() |
+| 엔드포인트                                      | Phase 2 (현재)                                                | Phase 2.5                                                  |
+| ----------------------------------------------- | ------------------------------------------------------------- | ---------------------------------------------------------- |
+| `GET /api/repos/:owner/:repo/scan`              | handler + service + DAO 모두 fetch → 전체 파싱 → handler 목록 | handler 파일만 fetch → 경량 파싱 → handler 목록            |
+| `GET /api/repos/:owner/:repo/handlers/:id/flow` | 캐시된 parser에서 buildFlowGraph()                            | service/DAO 파일 on-demand fetch → 파싱 → buildFlowGraph() |
 
 #### 캐시 구조 변경
 
 **Phase 2 (현재):**
+
 ```
 { parser: CodeFlowParser, handlers: HandlerEntry[] }
 ```
 
 **Phase 2.5:**
+
 ```
 {
   // 1단계 캐시 (scan 시 생성)
@@ -836,6 +840,7 @@ export class OrderDao extends BaseCrudDao<OrderExtras> {
 
 현재 `findReferencedFiles()`는 handler → service/DAO 1단계만 추적.
 Phase 2.5에서는 **재귀적 추적** 필요:
+
 - handler → service → DAO
 - handler → service → 다른 service → DAO
 - 최대 깊이 3단계 제한
@@ -857,34 +862,151 @@ Phase 2.5에서는 **재귀적 추적** 필요:
 
 **수정 대상 파일:**
 
-| 파일 | 변경 내용 |
-|---|---|
-| `src/app/api/repos/[owner]/[repo]/scan/route.ts` | service/DAO fetch 제거, 경량 스캔만 수행 |
-| `src/app/api/repos/[owner]/[repo]/handlers/[handlerId]/flow/route.ts` | on-demand service/DAO fetch + 파싱 추가 |
-| `src/lib/github/scan-cache.ts` | 캐시 구조 변경 (fileTree, handlerFiles, flowCache 추가) |
-| `src/lib/github/file-fetcher.ts` | 재귀적 import 추적 함수 추가 |
-| `src/components/layout/GitHubSidebar.tsx` | 자동 선택 제거, 2단계 로딩 UX |
-| `src/stores/repo-store.ts` | flow 로딩 상태 추가 |
+| 파일                                                                  | 변경 내용                                               |
+| --------------------------------------------------------------------- | ------------------------------------------------------- |
+| `src/app/api/repos/[owner]/[repo]/scan/route.ts`                      | service/DAO fetch 제거, 경량 스캔만 수행                |
+| `src/app/api/repos/[owner]/[repo]/handlers/[handlerId]/flow/route.ts` | on-demand service/DAO fetch + 파싱 추가                 |
+| `src/lib/github/scan-cache.ts`                                        | 캐시 구조 변경 (fileTree, handlerFiles, flowCache 추가) |
+| `src/lib/github/file-fetcher.ts`                                      | 재귀적 import 추적 함수 추가                            |
+| `src/components/layout/GitHubSidebar.tsx`                             | 자동 선택 제거, 2단계 로딩 UX                           |
+| `src/stores/repo-store.ts`                                            | flow 로딩 상태 추가                                     |
 
-### Phase 3: AI 라벨링 + UX 개선 (1주)
+### Phase 3: UX 개선 — 경로 트레이싱 + 코드 패널 ✅
 
 **범위:**
 
-- [ ] Claude API 연동 (AI 라벨링 모듈)
-- [ ] 라벨링 ON/OFF 토글 UI
-- [ ] 파싱 결과 캐시 (SQLite) — Phase 2.5의 in-memory 캐시를 persistent 저장소로 전환
-- [ ] 증분 분석 (변경된 파일만 재파싱) — Phase 2.5 캐시의 blob SHA 비교 활용
-- [ ] 경로 트레이싱 (성공/에러 경로 필터)
-- [ ] 미니맵
-- [ ] 코드 패널 (노드 클릭 시 원본 코드 표시)
+- [x] 경로 트레이싱 (성공/에러 경로 필터)
+- [x] 미니맵
+- [x] 코드 패널 (노드 클릭 시 원본 코드 표시)
 
-### Phase 4: 확장 (추후)
+**구현 완료 내용:**
 
-- [ ] NestJS, Next.js API Routes 패턴 지원
+| 파일 | 변경 |
+|---|---|
+| `src/lib/graph/path-finder.ts` | **신규**. 양방향 BFS 경로 탐색 유틸 (`findPathNodes`, `getEntryNodeId`, `getTerminalNodeIds`) |
+| `src/components/flow/PathFilterBar.tsx` | **신규**. All/Success ✓/Error ✗ 필터 버튼 (FlowCanvas 좌상단 floating) |
+| `src/components/flow/CodePanel.tsx` | **신규**. 노드 클릭 시 우측 코드 상세 사이드 패널 (w-80, label/layer/type/source/rawCode 표시) |
+| `src/stores/flow-store.ts` | `pathFilter`, `focusedTerminalId`, `highlightedNodeIds/EdgeIds`, `selectedNodeId` 추가 |
+| `src/components/flow/FlowCanvas.tsx` | dimming `useMemo`, `useEffect` 경로 계산, PathFilterBar 통합, 터미널 노드 클릭 토글, pinned tooltip 제거 |
+| `src/components/flow/NodeTooltip.tsx` | `pinned`/`onClose` prop 제거, hover-only (`pointer-events-none`) 간소화 |
+| `src/components/repo/RepoVisualizerPage.tsx` | CodePanel을 main 레이아웃에 추가 (FlowCanvas 우측) |
+| `src/components/flow/nodes/ReturnNode.tsx` | `isFocused` 시 녹색 glow ring |
+| `src/components/flow/nodes/ErrorNode.tsx` | `isFocused` 시 빨간 glow ring |
+| `tests/flow/path-finder.test.ts` | **신규**. 12개 단위 테스트 (다이아몬드, 머지, 멀티레이어 그래프 등) |
+
+**검증:** 기존 100개 + 신규 12개 = 총 112개 테스트 통과
+
+### Phase 3.5: 사이드바 UX 개선 — Handler 그룹화 + 검색 + 로딩 UX
+
+> 핵심: Handler 목록이 많을 때 도메인별 그룹화와 검색으로 빠르게 찾고, 로딩 상태를 명확히 인지할 수 있도록 개선
+
+**문제점 (Phase 3 완료 시점):**
+
+- Handler 목록이 플랫 리스트로 나열되어, handler 수가 많으면 원하는 API를 찾기 어려움
+- 검색 기능이 없어 스크롤로만 탐색
+- Handler 클릭 시 로딩 인디케이터가 handler 목록 상단에 위치해 스크롤 하단에서 클릭 시 로딩 확인 불가
+
+---
+
+#### Feature 1: Handler 목록 도메인 그룹화
+
+**동작:**
+- Handler의 URL path 기준으로 도메인 자동 추출하여 그룹화
+  - 예: `/api/b2e/member/sign-up` → 도메인 `member`
+  - 예: `/api/backoffice/order/:id` → 도메인 `order`
+- 그룹 헤더 클릭 시 서브 리스트 토글 (접기/펼치기)
+- 기본 상태: 전체 펼침
+
+**그룹화 알고리즘:**
+```
+URL path에서 prefix 제거 후 첫 번째 세그먼트 추출:
+  /api/{domain-prefix}/{group-name}/... → group-name
+  /api/b2e/member/sign-up → "member"
+  /api/backoffice/order/:id → "order"
+```
+
+**UI:**
+```
+┌─────────────────────┐
+│ 🔍 Search handlers  │
+├─────────────────────┤
+│ ▼ member (3)        │
+│   POST /sign-up     │
+│   GET  /            │
+│   GET  /:id         │
+│ ▶ order (5)         │  ← 접힌 상태
+│ ▼ ticket (2)        │
+│   POST /            │
+│   PATCH /:id/pause  │
+└─────────────────────┘
+```
+
+#### Feature 2: Handler 검색
+
+**동작:**
+- 사이드바 상단에 검색 입력 필드 추가
+- 실시간 필터링: path, method, functionName 대상
+- 검색 시 그룹 구조 유지 (매칭 handler가 있는 그룹만 표시)
+- 빈 결과 시 "No handlers found" 메시지
+
+#### Feature 3: 로딩 UX 개선
+
+**문제:**
+- 현재 로딩 표시가 handler 목록 상단에 위치하여, 사용자가 목록 하단에서 handler를 클릭했을 때 로딩 상태를 인지하기 어려움
+
+**해결:**
+- **선택된 handler 항목 자체에 로딩 표시**: 클릭한 handler 옆에 인라인 스피너 표시
+- **FlowCanvas 영역에 오버레이 로딩**: 캔버스 중앙에 로딩 인디케이터 표시
+- 기존 상단 로딩 인디케이터 제거
+
+**UI:**
+```
+┌─────────────────────┬──────────────────────────┐
+│ ▼ member (3)        │                          │
+│   POST /sign-up     │                          │
+│   GET  /        ◌   │ ← 선택된 항목에 스피너    │
+│   GET  /:id         │    ⟳ Analyzing flow...   │ ← 캔버스 중앙 로딩
+│ ▼ order (5)         │                          │
+└─────────────────────┴──────────────────────────┘
+```
+
+---
+
+#### 수정 대상 파일
+
+| 파일 | 변경 |
+|---|---|
+| `src/components/layout/GitHubSidebar.tsx` | 그룹화 로직, 접기/펼치기, 검색 입력, 인라인 로딩 스피너 |
+| `src/components/flow/FlowCanvas.tsx` | 로딩 중 오버레이 표시 |
+| `src/stores/repo-store.ts` | 로딩 중인 handler ID 상태 추가 (필요 시) |
+
+#### 구현 순서
+
+1. Handler 그룹화 유틸 함수 (URL path → 도메인 그룹 추출)
+2. `GitHubSidebar` 리팩토링 — 그룹 UI + 접기/펼치기
+3. 검색 입력 필드 + 실시간 필터링
+4. 로딩 UX 개선 — 인라인 스피너 + 캔버스 오버레이
+5. 기존 상단 로딩 인디케이터 제거
+
+#### 검증
+
+1. Handler 목록이 도메인별로 올바르게 그룹화되는지 확인
+2. 그룹 헤더 클릭 시 서브 리스트 토글 동작 확인
+3. 검색어 입력 시 실시간 필터링 확인 (path, method, functionName)
+4. Handler 클릭 시 해당 항목에 스피너 표시 확인
+5. FlowCanvas에 로딩 오버레이 표시 확인
+6. 기존 112개 테스트 통과 확인
+
+### Phase 4: 확장
+
 - [ ] 상태 머신 시각화 (enum 기반 상태 전이)
 - [ ] 여러 핸들러 간 공통 서비스 호출 관계도
 - [ ] Webhook으로 push 시 자동 재분석
 - [ ] 팀 공유 (공유 링크 생성)
+- [ ] Claude API 연동 (AI 라벨링 모듈)
+- [ ] 라벨링 ON/OFF 토글 UI
+- [ ] 파싱 결과 캐시 (SQLite) — Phase 2.5의 in-memory 캐시를 persistent 저장소로 전환
+- [ ] 증분 분석 (변경된 파일만 재파싱) — Phase 2.5 캐시의 blob SHA 비교 활용
 
 ---
 

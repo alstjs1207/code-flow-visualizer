@@ -1,10 +1,10 @@
 "use client";
 
 import { useRef, useLayoutEffect, useState } from "react";
-import type { Node } from "@xyflow/react";
+import type { FlowNode } from "@/types";
 
 interface NodeTooltipProps {
-  node: Node;
+  node: FlowNode;
   position: { x: number; y: number };
 }
 
@@ -12,7 +12,6 @@ const OFFSET_X = 12;
 const OFFSET_Y = -8;
 
 export function NodeTooltip({ node, position }: NodeTooltipProps) {
-  const { rawCode, source, layer, nodeType } = node.data as Record<string, unknown>;
   const ref = useRef<HTMLDivElement>(null);
   const [adjusted, setAdjusted] = useState<{ left: number; top: number }>({
     left: position.x + OFFSET_X,
@@ -56,21 +55,20 @@ export function NodeTooltip({ node, position }: NodeTooltipProps) {
     >
       <div className="mb-3 flex items-center gap-2">
         <span className="rounded bg-gray-800 px-2 py-1 text-sm text-gray-400">
-          {(layer as string) || "unknown"}
+          {node.layer || "unknown"}
         </span>
         <span className="rounded bg-gray-800 px-2 py-1 text-sm text-gray-400">
-          {(nodeType as string) || node.type}
+          {node.type}
         </span>
-        {source ? (
+        {node.source ? (
           <span className="text-sm text-gray-500">
-            {(source as { file: string; line: number }).file}:
-            {(source as { file: string; line: number }).line}
+            {node.source.file}:{node.source.line}
           </span>
         ) : null}
       </div>
-      {rawCode ? (
+      {node.rawCode ? (
         <pre className="max-h-72 overflow-auto rounded bg-gray-950 p-3 text-sm leading-relaxed text-gray-300">
-          <code>{rawCode as string}</code>
+          <code>{node.rawCode}</code>
         </pre>
       ) : null}
     </div>

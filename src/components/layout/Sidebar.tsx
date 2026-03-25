@@ -3,7 +3,6 @@
 import { useRepoStore } from "@/stores/repo-store";
 import { useFlowStore } from "@/stores/flow-store";
 import { HandlerList } from "@/components/handler/HandlerList";
-import { applyDagreLayout } from "@/lib/layout/dagre-layout";
 import type { FlowGraph } from "@/types";
 
 export function Sidebar() {
@@ -24,7 +23,7 @@ export function Sidebar() {
     setHasAnalyzed,
   } = useRepoStore();
 
-  const { setFlowGraph, setRfNodes, setRfEdges } = useFlowStore();
+  const { setFlowGraph } = useFlowStore();
 
   const handleAnalyze = async () => {
     if (!handlerCode.trim()) {
@@ -94,10 +93,6 @@ export function Sidebar() {
 
       const graph: FlowGraph = await res.json();
       setFlowGraph(graph);
-
-      const { nodes, edges } = applyDagreLayout(graph);
-      setRfNodes(nodes);
-      setRfEdges(edges);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unknown error");
     } finally {

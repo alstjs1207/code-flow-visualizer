@@ -11,9 +11,8 @@
     "test:watch": "vitest"
   },
   "dependencies": {
-    "@dagrejs/dagre": "^2.0.4",
     "@octokit/rest": "^22.0.1",
-    "@xyflow/react": "^12.10.1",
+    "mermaid": "^11.13.0",
     "micromatch": "^4.0.8",
     "next": "16.1.6",
     "react": "19.2.3",
@@ -25,7 +24,6 @@
     "@tailwindcss/postcss": "^4",
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.2",
-    "@types/dagre": "^0.7.53",
     "@types/micromatch": "^4.0.10",
     "@types/node": "^20",
     "@types/react": "^19",

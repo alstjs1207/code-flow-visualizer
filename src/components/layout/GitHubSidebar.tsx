@@ -1,10 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useRepoStore } from "@/stores/repo-store";
 import { useFlowStore } from "@/stores/flow-store";
-import { HandlerList } from "@/components/handler/HandlerList";
-import { applyDagreLayout } from "@/lib/layout/dagre-layout";
+import { HandlerCard } from "@/components/handler/HandlerCard";
+import { groupHandlers } from "@/lib/handler-group";
 import type { FlowGraph } from "@/types";
 
 interface GitHubSidebarProps {
@@ -38,9 +38,43 @@ export function GitHubSidebar({ owner, repo }: GitHubSidebarProps) {
     setFlowProgress,
   } = useRepoStore();
 
-  const { setFlowGraph, setRfNodes, setRfEdges } = useFlowStore();
+  const { setFlowGraph } = useFlowStore();
 
   const [patternsText, setPatternsText] = useState(globPatterns.join("\n"));
+  const [searchQuery, setSearchQuery] = useState("");
+  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(
+    new Set()
+  );
+
+  const filteredHandlers = useMemo(() => {
+    if (!searchQuery.trim()) return handlers;
+    const q = searchQuery.toLowerCase();
+    return handlers.filter(
+      (h) =>
+        h.path.toLowerCase().includes(q) ||
+        h.method.toLowerCase().includes(q) ||
+        h.functionName.toLowerCase().includes(q)
+    );
+  }, [handlers, searchQuery]);
+
+  const groupedHandlers = useMemo(
+    () => groupHandlers(filteredHandlers),
+    [filteredHandlers]
+  );
+
+  const isSearching = searchQuery.trim().length > 0;
+
+  const toggleGroup = (group: string) => {
+    setCollapsedGroups((prev) => {
+      const next = new Set(prev);
+      if (next.has(group)) {
+        next.delete(group);
+      } else {
+        next.add(group);
+      }
+      return next;
+    });
+  };
 
   const handleScan = async () => {
     setIsLoading(true);
@@ -108,10 +142,6 @@ export function GitHubSidebar({ owner, repo }: GitHubSidebarProps) {
 
       const graph: FlowGraph = await res.json();
       setFlowGraph(graph);
-
-      const { nodes, edges } = applyDagreLayout(graph);
-      setRfNodes(nodes);
-      setRfEdges(edges);
 
       setFlowProgress({ stage: "done", message: "Flow graph ready" });
     } catch (err) {
@@ -190,44 +220,92 @@ export function GitHubSidebar({ owner, repo }: GitHubSidebarProps) {
           </div>
         )}
 
-        {/* Flow loading progress */}
-        {isFlowLoading && flowProgress && (
-          <div className="flex items-center gap-2 rounded-lg border border-cyan-900 bg-cyan-950 px-3 py-2 text-xs text-cyan-400">
-            <svg
-              className="h-3 w-3 animate-spin"
-              viewBox="0 0 24 24"
-              fill="none"
-            >
-              <circle
-                className="opacity-25"
-                cx="12"
-                cy="12"
-                r="10"
-                stroke="currentColor"
-                strokeWidth="4"
-              />
-              <path
-                className="opacity-75"
-                fill="currentColor"
-                d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
-              />
-            </svg>
-            {flowProgress.message}
-          </div>
-        )}
-
         {/* Handler list */}
         <div className="border-t border-gray-800 pt-3">
           <h3 className="mb-2 text-xs font-medium text-gray-400">
             Detected Handlers
           </h3>
-          <HandlerList
-            handlers={handlers}
-            selectedId={selectedHandlerId}
-            onSelect={(id) => handleSelectHandler(id)}
-            hasAnalyzed={hasAnalyzed}
-            disabled={isFlowLoading}
-          />
+
+          {/* Search */}
+          {handlers.length > 0 && (
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Search handlers..."
+              className="mb-2 w-full rounded-lg border border-gray-800 bg-gray-900 px-3 py-1.5 text-xs text-gray-300 placeholder-gray-600 focus:border-cyan-600 focus:outline-none"
+            />
+          )}
+
+          {/* Grouped handlers */}
+          {filteredHandlers.length === 0 ? (
+            hasAnalyzed ? (
+              <div className="rounded-lg border border-amber-800 bg-amber-950 px-3 py-3 text-xs text-amber-400">
+                <p className="font-medium">
+                  {isSearching
+                    ? "검색 결과가 없습니다."
+                    : "분석 가능한 핸들러 함수를 찾지 못했습니다."}
+                </p>
+                {!isSearching && (
+                  <>
+                    <p className="mt-1 text-amber-500">
+                      다음 형태의 코드를 포함해 주세요:
+                    </p>
+                    <code className="mt-1 block text-[11px] text-amber-600">
+                      router.get(&quot;/path&quot;, handler)
+                    </code>
+                    <code className="mt-1 block text-[11px] text-amber-600">
+                      export async function handler(req, res)
+                    </code>
+                    <code className="mt-1 block text-[11px] text-amber-600">
+                      this.server.get(&quot;/path&quot;, opts, handler)
+                    </code>
+                  </>
+                )}
+              </div>
+            ) : (
+              <div className="px-3 py-4 text-center text-xs text-gray-600">
+                No handlers detected. Click Scan Repository to start.
+              </div>
+            )
+          ) : (
+            <div className="flex flex-col gap-1">
+              {[...groupedHandlers.entries()].map(([group, items]) => {
+                const isCollapsed =
+                  !isSearching && collapsedGroups.has(group);
+                return (
+                  <div key={group}>
+                    <button
+                      onClick={() => toggleGroup(group)}
+                      className="flex w-full items-center gap-1 rounded px-1 py-1 text-xs font-medium text-gray-400 hover:bg-gray-800/50 hover:text-gray-300"
+                    >
+                      <span className="text-[10px]">
+                        {isCollapsed ? "▶" : "▼"}
+                      </span>
+                      <span>{group}</span>
+                      <span className="text-gray-600">({items.length})</span>
+                    </button>
+                    {!isCollapsed && (
+                      <div className="flex flex-col gap-1 pb-1 pl-2">
+                        {items.map((handler) => (
+                          <HandlerCard
+                            key={handler.id}
+                            handler={handler}
+                            isSelected={handler.id === selectedHandlerId}
+                            isLoading={isFlowLoading}
+                            onClick={() =>
+                              !isFlowLoading &&
+                              handleSelectHandler(handler.id)
+                            }
+                          />
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
       </div>
     </aside>

@@ -6,9 +6,10 @@ export const mermaidConfig: MermaidConfig = {
   darkMode: true,
   flowchart: {
     curve: "basis",
-    padding: 16,
-    nodeSpacing: 50,
-    rankSpacing: 80,
+    padding: 24,
+    nodeSpacing: 60,
+    rankSpacing: 50,
+    subGraphTitleMargin: { top: 10, bottom: 10 },
     htmlLabels: true,
     useMaxWidth: false,
   },

@@ -22,6 +22,50 @@ import type { FlowNode } from "@/types";
 
 let mermaidInitialized = false;
 
+/** Post-render SVG styling for subgraphs and animations */
+function applySvgStyles(container: HTMLElement) {
+  // Style subgraph backgrounds for layer separation
+  const subgraphs = container.querySelectorAll("g.cluster rect");
+  subgraphs.forEach((rect) => {
+    const el = rect as SVGRectElement;
+    el.setAttribute("rx", "12");
+    el.setAttribute("ry", "12");
+    el.style.fillOpacity = "0.15";
+    el.style.strokeDasharray = "6 3";
+    el.style.strokeWidth = "1";
+  });
+
+  // Style subgraph title labels
+  const subgraphLabels = container.querySelectorAll("g.cluster .nodeLabel");
+  subgraphLabels.forEach((label) => {
+    (label as HTMLElement).style.fontSize = "11px";
+    (label as HTMLElement).style.fontWeight = "600";
+    (label as HTMLElement).style.letterSpacing = "0.05em";
+    (label as HTMLElement).style.textTransform = "uppercase";
+  });
+
+  // Add marching-ants animation for error (dashed) edges
+  const style = document.createElement("style");
+  style.textContent = `
+    @keyframes mermaid-dash-march {
+      to { stroke-dashoffset: -20; }
+    }
+    .mermaid-error-edge {
+      animation: mermaid-dash-march 0.8s linear infinite;
+    }
+  `;
+  container.appendChild(style);
+
+  // Find dashed edges and apply animation class
+  const paths = container.querySelectorAll("g.edgePaths path");
+  paths.forEach((path) => {
+    const dasharray = (path as SVGPathElement).style.strokeDasharray;
+    if (dasharray && dasharray !== "none" && dasharray !== "0") {
+      path.classList.add("mermaid-error-edge");
+    }
+  });
+}
+
 export function MermaidCanvas() {
   const {
     flowGraph,
@@ -89,6 +133,9 @@ export function MermaidCanvas() {
         if (!svgWrapperRef.current) return;
 
         svgWrapperRef.current.innerHTML = svg;
+
+        // Apply post-render visual enhancements
+        applySvgStyles(svgWrapperRef.current);
 
         // Attach pan/zoom
         if (panZoomRef.current) {
